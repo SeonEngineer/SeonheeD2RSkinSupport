@@ -8,34 +8,36 @@ Created on Wed Oct 27 18:52:37 2021
 import json
 import sys
 from PyQt5.QtCore import Qt
-from PyQt5 import  QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QFileDialog, QDialog, QMainWindow, QTableWidget, QTableWidgetItem, QMessageBox, QApplication, QAbstractItemView, QAction, QInputDialog
-#from PyQt5.QtWidgets import *
-#from PyQt5.QtGui import *
 from PyQt5 import uic 
 import winreg as reg  
 import os
 from pathlib import Path
 import shutil
+
+import configparser
+import zipfile
+import sqlite3
+import cv2 #opencv
+import numpy as np #numpy형식으로 image처리
+
 #from distutils.dir_util import copy_tree
 #from distutils.dir_util import _path_created
 #import time
 #import distutils 
-import configparser
-import zipfile
-import sqlite3
+#from PyQt5.QtWidgets import *
+#from PyQt5.QtGui import *
 
+
+#os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 #path
 d2rPath = ""
 path_config = "./config/config.ini"
 path_modinfo = "./config/modinfo.json"
-config = configparser.ConfigParser()
+#config = configparser.ConfigParser()
 
-
-#ui
-form_class = uic.loadUiType("./config/seonhee.ui")[0]
-Ui_InputSkin,_ = uic.loadUiType("./config/input_skin.ui")
 
 skinList = []
 folderPathList = []
@@ -43,22 +45,282 @@ filePathList = []
 
 
 
-#db
-# =============================================================================
-# filePathDB = []
-# with open('filePathDb.txt','r', encoding='UTF-8') as f:
-#     lines = f.readlines()
-#     for strs in lines:
-#         splitStr = strs.split(',')
-#         filePathDB.append(splitStr)
-# 
-# =============================================================================
-#conn = sqlite3.connect("file:FileDB.db?mode=ro")
-conn = sqlite3.connect('./config/FileDB.db')
-cur = conn.cursor()
+#conn = sqlite3.connect('./config/FileDB.db')
+#cur = conn.cursor()
+
+#opencv-click event
+def onMouse(event, x, y, flags, param): # 아무스 콜백 함수 구현 ---①
+    #print(event, x, y, )                # 파라미터 출력
+    if event == cv2.EVENT_LBUTTONDOWN:  # 왼쪽 버튼 누름인 경우 ---②
+        cv2.destroyAllWindows()
 
 ##
-class MyWindow(QMainWindow, form_class):
+class Ui_MainWindow(object):
+    def __init__(self):
+        super().__init__()
+
+
+
+    def initControl(self):
+        global skinList
+        global d2rPath
+        global config
+        global conn
+        global cur
+        
+        path_dir = './config'
+        if not os.access(path_dir, os.F_OK):
+            strs = '[심각한 오류] config 폴더가 없어요! 프로그램을 실행할 수 없습니다'
+            QMessageBox.question(self.centralwidget, 'Message', strs, QMessageBox.Yes , QMessageBox.Yes)
+            sys.exit()
+        path_dir = './files'
+        if not os.access(path_dir, os.F_OK):
+            strs = '[심각한 오류] files 폴더가 없어요! 프로그램을 실행할 수 없습니다'
+            QMessageBox.question(self.centralwidget, 'Message', strs, QMessageBox.Yes , QMessageBox.Yes)
+            sys.exit()
+
+        config = configparser.ConfigParser()
+        conn = sqlite3.connect('./config/FileDB.db')
+        cur = conn.cursor()
+        
+        
+        #초기값 읽어오기
+        self.getReg() #레지스트리 읽어옴
+        if self.config_load() == False:
+            self.config_save()
+
+        
+        #config에 이미 diablo경로가있다면 불러옴
+        #d2rPath    
+        if config.has_option('global','d2rPath'):
+            tempStr = config.get('global','d2rPath')
+            if len(tempStr) > 1:
+                d2rPath = tempStr
+                print('path입력완료')
+            else:
+                print('너무짧음 이상함')
+        else:
+            print('저장되어있는 d2rPath 데이터가없음')
+        self.lineEditD2RPath.setText(d2rPath)
+        tempStr = "D2R Path : %s" % (d2rPath)
+        
+        self.listWidgetDebug.addItem(tempStr)
+        self.lineEditCustomName.setText("seonheeCustom")
+        
+        #sound
+        readPath = "./misc/sample_diablo3_legendary.flac"
+        if os.access(readPath, os.F_OK):
+            self.lineEditSoundPath.setText(readPath)
+             
+        
+        self.pushButtonCreate.clicked.connect(self.btnCreate)
+        self.pushButtonConfigSave.clicked.connect(self.btn_configSave)
+        self.pushButtonPathSelect.clicked.connect(self.btnSelectFolder)
+        self.pushButtonListUp.clicked.connect(self.btn_table_row_up)
+        self.pushButtonListDown.clicked.connect(self.btn_table_row_down)
+        self.pushButtonPathSelect_2.clicked.connect(self.btn_selectRuneSound)
+        self.pushButtonPathSelect_3.clicked.connect(self.btn_selectFont)
+        self.pushButtonLoadzip.clicked.connect(self.btn_selectLoadZip)
+        self.pushButtonReload.clicked.connect(self.btn_reload)
+        
+        
+        #config 처리
+        
+        #config로 읽어온 데이터가 있다면 써준다
+        #if len(config.values['global']['modeName']) > 0:
+        #self.lineEditCustomName.setText()
+        if config.has_option('global','modeName'):
+            self.lineEditCustomName.setText(config.get('global','modeName'))
+        if config.has_option('global','sound-rune'):
+            self.lineEditSoundPath.setText(config.get('global','sound-rune'))
+        if config.has_option('global','font'):
+            self.lineEditFontPath.setText(config.get('global','font'))
+        if config.has_option('checkbox','sound-rune'):
+            if config.get('checkbox','sound-rune') == 'True':
+                Flag = True
+            else:
+                Flag = False
+                self.checkBox98.setChecked(Flag)
+        if config.has_option('checkbox','font'):
+            if config.get('checkbox','font') == 'True':
+                Flag = True
+            else:
+                Flag = False
+                self.checkBox99.setChecked(Flag)
+        if config.has_option('checkbox','kodia'):
+            if config.get('checkbox','kodia') == 'True':
+                Flag = True
+            else:
+                Flag = False
+                self.checkBox99_1.setChecked(Flag)
+        if config.has_option('checkbox','irisl'):
+            if config.get('checkbox','irisl') == 'True':
+                Flag = True
+            else:
+                Flag = False
+                self.checkBox99_2.setChecked(Flag)
+        if config.has_option('checkbox','blizzardglobaltcunicode'):
+            if config.get('checkbox','blizzardglobaltcunicode') == 'True':
+                Flag = True
+            else:
+                Flag = False
+                self.checkBox99_3.setChecked(Flag)
+
+        
+        #줄
+        self.tableWidgetMain.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tableWidgetMain.verticalHeader().setVisible(False) 
+        #self.tableWidgetMain.horizontalHeader().setVisible(False) 
+        self.tableWidgetMain.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tableWidgetMain.setSelectionMode(QAbstractItemView.SingleSelection)
+        
+        self.tableWidgetMain.setColumnCount(4)
+        #스킨갯수만큼
+        
+        self.tableWidgetMain.setColumnWidth(0,40)
+        self.tableWidgetMain.setColumnWidth(1,250)
+        self.tableWidgetMain.setColumnWidth(2,440)
+        self.tableWidgetMain.setColumnWidth(3,40)
+        self.tableWidgetMain.setHorizontalHeaderLabels(["Seon","스킨명","설명","사진"])
+        self.tableWidgetMain.cellClicked.connect(self.table_cell_clicked)
+        
+        ###
+        self.tableWidgetMain.setContextMenuPolicy(Qt.ActionsContextMenu)
+
+        table_action_modify1 = QAction("이름 수정하기", self.tableWidgetMain)
+        table_action_modify2 = QAction("설명 수정하기", self.tableWidgetMain)
+        table_action_skinDelete = QAction("이 스킨을 삭제하기", self.tableWidgetMain)
+
+        self.tableWidgetMain.addAction(table_action_modify1)
+        self.tableWidgetMain.addAction(table_action_modify2)
+        self.tableWidgetMain.addAction(table_action_skinDelete)
+        
+
+        table_action_modify1.triggered.connect(self._table_action_modify1)
+        table_action_modify2.triggered.connect(self._table_action_modify2)
+        table_action_skinDelete.triggered.connect(self._table_action_skinDelete)
+        ###
+
+        self.files_load()
+        self.table_data_sorting()  #소팅한다
+        self.table_dataRefresh()   #데이터를 재배치하고
+        
+    def setupUi(self, MainWindow):
+        MainWindow.setObjectName("MainWindow")
+        MainWindow.setEnabled(True)
+        MainWindow.resize(823, 869)
+        self.centralwidget = QtWidgets.QWidget(MainWindow)
+        self.centralwidget.setObjectName("centralwidget")
+        self.listWidgetDebug = QtWidgets.QListWidget(self.centralwidget)
+        self.listWidgetDebug.setGeometry(QtCore.QRect(20, 680, 661, 161))
+        self.listWidgetDebug.setObjectName("listWidgetDebug")
+        self.pushButtonPathSelect = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonPathSelect.setGeometry(QtCore.QRect(390, 20, 31, 21))
+        self.pushButtonPathSelect.setObjectName("pushButtonPathSelect")
+        self.lineEditD2RPath = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEditD2RPath.setGeometry(QtCore.QRect(20, 20, 361, 20))
+        self.lineEditD2RPath.setObjectName("lineEditD2RPath")
+        self.lineEditCustomName = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEditCustomName.setGeometry(QtCore.QRect(80, 50, 271, 20))
+        self.lineEditCustomName.setObjectName("lineEditCustomName")
+        self.pushButtonCreate = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonCreate.setGeometry(QtCore.QRect(20, 610, 121, 51))
+        self.pushButtonCreate.setObjectName("pushButtonCreate")
+        self.label = QtWidgets.QLabel(self.centralwidget)
+        self.label.setGeometry(QtCore.QRect(20, 55, 53, 12))
+        self.label.setObjectName("label")
+        self.checkBox98 = QtWidgets.QCheckBox(self.centralwidget)
+        self.checkBox98.setEnabled(True)
+        self.checkBox98.setGeometry(QtCore.QRect(300, 613, 91, 16))
+        self.checkBox98.setChecked(True)
+        self.checkBox98.setObjectName("checkBox98")
+        self.tableWidgetMain = QtWidgets.QTableWidget(self.centralwidget)
+        self.tableWidgetMain.setGeometry(QtCore.QRect(20, 80, 785, 510))
+        self.tableWidgetMain.setObjectName("tableWidgetMain")
+        self.tableWidgetMain.setColumnCount(0)
+        self.tableWidgetMain.setRowCount(0)
+        self.pushButtonListUp = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonListUp.setGeometry(QtCore.QRect(640, 20, 75, 51))
+        font = QtGui.QFont()
+        font.setPointSize(16)
+        self.pushButtonListUp.setFont(font)
+        self.pushButtonListUp.setObjectName("pushButtonListUp")
+        self.pushButtonListDown = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonListDown.setGeometry(QtCore.QRect(730, 20, 75, 51))
+        font = QtGui.QFont()
+        font.setPointSize(16)
+        self.pushButtonListDown.setFont(font)
+        self.pushButtonListDown.setObjectName("pushButtonListDown")
+        self.pushButtonConfigSave = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonConfigSave.setGeometry(QtCore.QRect(160, 610, 121, 51))
+        self.pushButtonConfigSave.setObjectName("pushButtonConfigSave")
+        self.pushButtonPathSelect_2 = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonPathSelect_2.setGeometry(QtCore.QRect(770, 610, 31, 21))
+        self.pushButtonPathSelect_2.setObjectName("pushButtonPathSelect_2")
+        self.lineEditSoundPath = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEditSoundPath.setGeometry(QtCore.QRect(400, 610, 361, 20))
+        self.lineEditSoundPath.setObjectName("lineEditSoundPath")
+        self.pushButtonPathSelect_3 = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonPathSelect_3.setGeometry(QtCore.QRect(770, 637, 31, 21))
+        self.pushButtonPathSelect_3.setObjectName("pushButtonPathSelect_3")
+        self.lineEditFontPath = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEditFontPath.setGeometry(QtCore.QRect(400, 637, 361, 20))
+        self.lineEditFontPath.setObjectName("lineEditFontPath")
+        self.checkBox99 = QtWidgets.QCheckBox(self.centralwidget)
+        self.checkBox99.setEnabled(True)
+        self.checkBox99.setGeometry(QtCore.QRect(300, 640, 91, 16))
+        self.checkBox99.setChecked(True)
+        self.checkBox99.setObjectName("checkBox99")
+        self.pushButtonLoadzip = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonLoadzip.setGeometry(QtCore.QRect(700, 680, 101, 51))
+        self.pushButtonLoadzip.setObjectName("pushButtonLoadzip")
+        self.pushButtonReload = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonReload.setGeometry(QtCore.QRect(700, 750, 101, 51))
+        self.pushButtonReload.setObjectName("pushButtonReload")
+        self.checkBox99_1 = QtWidgets.QCheckBox(self.centralwidget)
+        self.checkBox99_1.setEnabled(True)
+        self.checkBox99_1.setGeometry(QtCore.QRect(370, 660, 81, 16))
+        self.checkBox99_1.setChecked(True)
+        self.checkBox99_1.setObjectName("checkBox99_1")
+        self.checkBox99_2 = QtWidgets.QCheckBox(self.centralwidget)
+        self.checkBox99_2.setEnabled(True)
+        self.checkBox99_2.setGeometry(QtCore.QRect(460, 660, 71, 16))
+        self.checkBox99_2.setChecked(True)
+        self.checkBox99_2.setObjectName("checkBox99_2")
+        self.checkBox99_3 = QtWidgets.QCheckBox(self.centralwidget)
+        self.checkBox99_3.setEnabled(True)
+        self.checkBox99_3.setGeometry(QtCore.QRect(540, 660, 171, 16))
+        self.checkBox99_3.setChecked(True)
+        self.checkBox99_3.setObjectName("checkBox99_3")
+        MainWindow.setCentralWidget(self.centralwidget)
+        self.statusbar = QtWidgets.QStatusBar(MainWindow)
+        self.statusbar.setObjectName("statusbar")
+        MainWindow.setStatusBar(self.statusbar)
+
+        self.retranslateUi(MainWindow)
+        QtCore.QMetaObject.connectSlotsByName(MainWindow)
+
+    def retranslateUi(self, MainWindow):
+        _translate = QtCore.QCoreApplication.translate
+        MainWindow.setWindowTitle(_translate("MainWindow", "SeonHee D2R 스킨 적용 보조도우미 v0.7"))
+        self.pushButtonPathSelect.setText(_translate("MainWindow", "..."))
+        self.pushButtonCreate.setText(_translate("MainWindow", "모드 생성하기"))
+        self.label.setText(_translate("MainWindow", "mod 명칭"))
+        self.checkBox98.setText(_translate("MainWindow", "룬 드랍 소리"))
+        self.pushButtonListUp.setText(_translate("MainWindow", "▲"))
+        self.pushButtonListDown.setText(_translate("MainWindow", "▼"))
+        self.pushButtonConfigSave.setText(_translate("MainWindow", "설정 저장하기"))
+        self.pushButtonPathSelect_2.setText(_translate("MainWindow", "..."))
+        self.pushButtonPathSelect_3.setText(_translate("MainWindow", "..."))
+        self.checkBox99.setText(_translate("MainWindow", "폰트"))
+        self.pushButtonLoadzip.setText(_translate("MainWindow", "외부스킨(zip)\n불러오기"))
+        self.pushButtonReload.setText(_translate("MainWindow", "스킨폴더\n새로고침"))
+        self.checkBox99_1.setText(_translate("MainWindow", "kodia.ttf"))
+        self.checkBox99_2.setText(_translate("MainWindow", "irisl.ttf"))
+        self.checkBox99_3.setText(_translate("MainWindow", "blizzardglobaltcunicode.ttf"))
+        self.initControl()
+        
+
     def getReg(self):
         try:
             key = reg.HKEY_LOCAL_MACHINE
@@ -68,7 +330,7 @@ class MyWindow(QMainWindow, form_class):
                 value, type = reg.QueryValueEx(open,"InstallLocation")
             except:
                 value = ""
-                #reply = QMessageBox.question(self, 'Message', "", QMessageBox.Yes , QMessageBox.Yes)
+                #reply = QMessageBox.question(self.centralwidget, 'Message', "", QMessageBox.Yes , QMessageBox.Yes)
                 self.listWidgetDebug.addItem("D2R 폴더를 찾지못했어요! 수동으로라도 등록해주세요!")
             #print(value)
             # now close the opened key 
@@ -96,6 +358,20 @@ class MyWindow(QMainWindow, form_class):
             if skinList[row][1] == 1:
                 str = '적용'
             self.tableWidgetMain.setItem(row, 0, QTableWidgetItem(str))
+        elif col == 3: #이미지 불러오기 image load
+            skinName = skinList[row][2]
+            #해당폴더에 image.~ 가있으면 불러온다
+            path = os.path.join("./files/", skinName)
+            for filename in os.listdir(path):
+                if 'image' in filename:
+                    imagePath = os.path.join("./files/", skinName, filename)
+                    ff = np.fromfile(imagePath, np.uint8)
+                    img = cv2.imdecode(ff, cv2.IMREAD_UNCHANGED) #opencv는 unicode가 안됨
+                    cv2.imshow('Pictures', img)
+                    cv2.moveWindow('Pictures', 30, 30) #일괄적으로 여기다가 띄움
+                    cv2.setMouseCallback('Pictures', onMouse)
+                    cv2.waitKey(0)
+                    cv2.destroyAllWindows()
         return
     
     def files_load(self):
@@ -103,21 +379,33 @@ class MyWindow(QMainWindow, form_class):
         
         #폴더 읽어오기
         path_dir = './files'
+        if not os.access(path_dir, os.F_OK):
+            strs = '[심각한 오류] files 폴더가 없어요!'
+            QMessageBox.question(self.centralwidget, 'Message', strs, QMessageBox.Yes , QMessageBox.Yes)
+            self.debug(strs)
+            return
         fileList = os.listdir(path_dir)
         #print(fileList)
         iLen = len(fileList)
         self.tableWidgetMain.setRowCount(iLen)
         
         for i in range(iLen):
-            skinList.append([i,0,fileList[i],'']) #0:순서, 1:사용여부(0:안함 1:사용), 2:이름, 3:설명
+            skinList.append([i,0,fileList[i],'', False]) #0:순서, 1:사용여부(0:안함 1:사용), 2:이름, 3:설명, 4:image여부
             #폴더들 돌면서 readme.txt가 있으면 가져온다
-            readPath = './files/' + fileList[i] + '/readme.txt'
-            #print(readPath)
-            if os.access(readPath, os.F_OK):
-                with open(readPath, 'r', encoding='utf-8') as file:
-                    strs = file.readline()
-                    #print(strs)
-                    skinList[i][3] = strs
+            path = os.path.join("./files/",fileList[i])
+            for filename in os.listdir(path):
+                if 'readme.txt' in filename:
+                    readPath = os.path.join("./files/",fileList[i], filename)
+                    if os.access(readPath, os.F_OK):
+                        with open(readPath, 'r', encoding='utf-8') as file:
+                            strs = file.readline()
+                            #print(strs)
+                            skinList[i][3] = strs
+                elif 'image.' in filename:
+                    skinList[i][4] = True
+                    
+            pass
+            
         #print(skinList)
         
     def table_dataRefresh(self):
@@ -132,7 +420,9 @@ class MyWindow(QMainWindow, form_class):
             self.tableWidgetMain.setItem(i, 0, QTableWidgetItem(str))
             self.tableWidgetMain.setItem(i, 1, QTableWidgetItem(skinList[i][2]))
             self.tableWidgetMain.setItem(i, 2, QTableWidgetItem(skinList[i][3]))
-            
+            if skinList[i][4] == True:
+                self.tableWidgetMain.setItem(i, 3, QTableWidgetItem('예시'))
+                
     def table_data_sorting(self):
         #데이터들을 ini기준으로 정렬한다. 맨위부터 하나씩 찾아서 위로 올려주는식으로한다
         global skinList
@@ -144,17 +434,8 @@ class MyWindow(QMainWindow, form_class):
         foridx = 0
         
         #전체 for문 돌린다
-        for ni in range(0,100):
+        for ni in range(0,999):
             orderStr = '%d' % (ni)
-# =============================================================================
-#             try:
-#                 strTitle = config['order'][orderStr]
-#                 print(strTitle)
-#             except:
-#                 print("더이상 order데이터가 없음")
-#                 return
-# =============================================================================
-            
             if config.has_option('order',orderStr):
                 strTitle = config.get('order', orderStr)
                 foridx = 0
@@ -198,8 +479,8 @@ class MyWindow(QMainWindow, form_class):
         
     def btn_configSave(self):
         self.config_save()
-        #reply = QMessageBox.question(self, 'Message', "설정을 저장했습니다", QMessageBox.Yes , QMessageBox.Yes)
-        QMessageBox.question(self, 'Message', "설정을 저장했습니다", QMessageBox.Yes , QMessageBox.Yes)
+        #reply = QMessageBox.question(self.centralwidget, 'Message', "설정을 저장했습니다", QMessageBox.Yes , QMessageBox.Yes)
+        QMessageBox.question(self.centralwidget, 'Message', "설정을 저장했습니다", QMessageBox.Yes , QMessageBox.Yes)
         
         
     def config_save(self):
@@ -213,6 +494,10 @@ class MyWindow(QMainWindow, form_class):
             config['checkbox'] = {}
             config['checkbox']['sound-rune'] = str(self.checkBox98.isChecked())
             config['checkbox']['font'] = str(self.checkBox99.isChecked())
+            config['checkbox']['kodia'] = str(self.checkBox99_1.isChecked())
+            config['checkbox']['irisl'] = str(self.checkBox99_2.isChecked())
+            config['checkbox']['blizzardglobaltcunicode'] = str(self.checkBox99_3.isChecked())
+            
             
             config['order'] = {}
             config['flag'] = {}
@@ -245,7 +530,7 @@ class MyWindow(QMainWindow, form_class):
         
     def btnSelectFolder(self):
         global d2rPath
-        fPath = QFileDialog.getExistingDirectory(self, caption='Open Directory', directory=d2rPath)
+        fPath = QFileDialog.getExistingDirectory(self.centralwidget, caption='Open Directory', directory=d2rPath)
         
         
         if len(fPath) > 1:
@@ -254,7 +539,7 @@ class MyWindow(QMainWindow, form_class):
             self.lineEditD2RPath.setText(d2rPath)
     
     def btnSelectFile(self, str1):
-        fPath = QFileDialog.getOpenFileName(self, caption='Open Directory', directory=str1)
+        fPath = QFileDialog.getOpenFileName(self.centralwidget, caption='Open Directory', directory=str1)
         return fPath
 
     def btn_selectRuneSound(self):
@@ -291,16 +576,21 @@ class MyWindow(QMainWindow, form_class):
                 orgZipFileName = head
                 head = head[:-len(tail)]
                 
+                if tail != '.zip':
+                    QMessageBox.question(self.centralwidget, 'Message', "압축파일의 확장자가 zip인 경우에만 가능합니다", QMessageBox.Yes , QMessageBox.Yes)
+                    return
+                
                 
                 #head=파일명, tail=확장자
-                m_modal = InputSkinDialog()
-                m_modal.setInputName(head)
-                m_modal.exec_()
+                #m_modal = InputSkinDialog()
+                #m_modal.setInputName(head)
+                #m_modal.exec_()
                 
-                if len(m_modal.inputStr) < 2:
-                    QMessageBox.question(self, 'Message', "이름을 입력하지 않아 불러오지 않았습니다", QMessageBox.Yes , QMessageBox.Yes)
+                text, ok = QInputDialog.getText(self.centralwidget, '입력 창', '스킨의 명칭을 입력해주세요', text=head)
+                if len(text) < 2:
+                    QMessageBox.question(self.centralwidget, 'Message', "이름을 입력하지 않아 불러오지 않았습니다", QMessageBox.Yes , QMessageBox.Yes)
                     return
-                skinName = str(m_modal.inputStr).strip()
+                skinName = str(text).strip()
                 skinName = skinName.strip()
                 #self.lineEditFontPath.setText(readPath)
                 #우선 zip파일을 해체합니다
@@ -308,7 +598,7 @@ class MyWindow(QMainWindow, form_class):
                 
                 createSkinPath = '.\\files\\' + skinName
                 if os.path.isdir(createSkinPath) == True:
-                    QMessageBox.question(self, 'Message', "입력한 명칭이 이미 존재합니다. 만들 수 없습니다.", QMessageBox.Yes , QMessageBox.Yes)
+                    QMessageBox.question(self.centralwidget, 'Message', "입력한 명칭이 이미 존재합니다. 만들 수 없습니다.", QMessageBox.Yes , QMessageBox.Yes)
                     return
                 tail = tail.lower() #혹시 확장자 문제생길지모르니 소문자처리
                 
@@ -388,7 +678,7 @@ class MyWindow(QMainWindow, form_class):
                         break#잊지말고 while마지막 정지
                         
                     #if fCheckFlag == True:
-                    #    QMessageBox.question(self, 'Message', "해당 zip 파일을 인식할 수 없습니다. 제작자에게 문의해주세요 (ㅠㅠ)", QMessageBox.Yes , QMessageBox.Yes)
+                    #    QMessageBox.question(self.centralwidget, 'Message', "해당 zip 파일을 인식할 수 없습니다. 제작자에게 문의해주세요 (ㅠㅠ)", QMessageBox.Yes , QMessageBox.Yes)
                     #    return
                     
                 
@@ -404,23 +694,15 @@ class MyWindow(QMainWindow, form_class):
                     self.copyTree_s(inZipPath, createSkinPath)
                     strs = '%s 파일으로부터 %s 스킨 을 만들었습니다.' % (orgZipFileName, skinName)
                     self.debug(strs)
-                    QMessageBox.question(self, 'Message', strs, QMessageBox.Yes , QMessageBox.Yes)
+                    QMessageBox.question(self.centralwidget, 'Message', strs, QMessageBox.Yes , QMessageBox.Yes)
                     #전체파일을 다시 로딩해준다
                     self.files_load()
                     self.table_data_sorting()  #소팅한다
                     self.table_dataRefresh()   #데이터를 재배치하고
                     
                     
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                elif zipFlag == True: #모두에도 해당하지않는다면 DB에서 조회하여 자동으로 만든다
-                    print('임의로 생성중')    
+                elif zipFlag == True: #어디에도 해당하지않는다면 DB에서 조회하여 자동으로 만든다
+                    print('임의로 생성중')
                     #일단 내용물을 모두 조회한다. 파일명을 모두알아내야함
                     newPath = '.\\temp\\zipExtract\\'
                     self.clearPathList()
@@ -466,7 +748,7 @@ class MyWindow(QMainWindow, form_class):
                     self.table_dataRefresh()   #데이터를 재배치하고
                     strs = '%s 파일으로부터 %s 스킨 을 만들었습니다.' % (orgZipFileName, skinName)
                     self.debug(strs)
-                    QMessageBox.question(self, 'Message', '[경로 데이터가 존재하지 않아, 자동으로 인식하여 스킨을 생성하였습니다]\n경로가 설정되어있지 않는 zip파일 이여서, 자동으로 db와 비교하여 스킨을 생성하였습니다.\n경로가 잘못되었을 수 있으니 적용 전 files 폴더에서 꼭 확인해주세요', QMessageBox.Yes , QMessageBox.Yes)
+                    QMessageBox.question(self.centralwidget, 'Message', '[경로 데이터가 존재하지 않아, 자동으로 인식하여 스킨을 생성하였습니다]\n경로가 설정되어있지 않는 zip파일 이여서, 자동으로 db와 비교하여 스킨을 생성하였습니다.\n경로가 잘못되었을 수 있으니 적용 전 files 폴더에서 꼭 확인해주세요', QMessageBox.Yes , QMessageBox.Yes)
                 
                     
                     
@@ -517,6 +799,9 @@ class MyWindow(QMainWindow, form_class):
             foldercreatePath = newPath + resultStr
             Path(foldercreatePath).mkdir(parents=True,exist_ok=True)
         for strs in filePathList: #파일 카피
+            if 'readme.txt' in strs or 'image.' in strs:
+                #print('copy pass > ', strs)
+                continue
             resultStr = strs[len(findPath):]
             FilenewPath = newPath + resultStr
             shutil.copy2(strs, FilenewPath)
@@ -525,11 +810,11 @@ class MyWindow(QMainWindow, form_class):
     def btnCreate(self):
         d2rPath = self.lineEditD2RPath.text()
         if "Diablo" not in d2rPath:
-            reply = QMessageBox.question(self, 'Message', '[경고] 현재 설정된 경로에 diablo 글자가 없어요!\n%s\n경로가 디아블로2 레저렉션이 설치된 폴더가 맞습니까?' % (d2rPath), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            reply = QMessageBox.question(self.centralwidget, 'Message', '[경고] 현재 설정된 경로에 diablo 글자가 없어요!\n%s\n경로가 디아블로2 레저렉션이 설치된 폴더가 맞습니까?' % (d2rPath), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
             if reply == QMessageBox.Yes:
                 pass
             else:
-                reply = QMessageBox.question(self, 'Message', "설치를 취소했습니다", QMessageBox.Yes , QMessageBox.Yes)
+                reply = QMessageBox.question(self.centralwidget, 'Message', "설치를 취소했습니다", QMessageBox.Yes , QMessageBox.Yes)
                 return
             
         
@@ -541,7 +826,7 @@ class MyWindow(QMainWindow, form_class):
         
         try:
             if os.path.exists(newPath):
-                reply = QMessageBox.question(self, 'Message', '이미 %s 모드가 설치되어있습니다. %s 모드 폴더를 삭제후 설치할까요?' % (modName, modName), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                reply = QMessageBox.question(self.centralwidget, 'Message', '이미 %s 모드가 설치되어있습니다. %s 모드 폴더를 삭제후 설치할까요?' % (modName, modName), QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
                 if reply == QMessageBox.Yes:
                     shutil.rmtree(newPath)
                 else:
@@ -550,7 +835,7 @@ class MyWindow(QMainWindow, form_class):
                 os.makedirs(newPath)
                 #Path(newPath).mkdir(exist_ok=True)
         except OSError:
-            self.listWidgetDebug.addItem("mods 폴더를 생성할 수 없습니다. (권한등 점검)")
+            self.listWidgetDebug.addItem("mods 폴더를 생성할 수 없습니다. (프로그램을 관리자 권한으로 실행해주세요)")
             return
         
         self.listWidgetDebug.addItem("mods/"+modName+" 폴더를 생성했습니다")
@@ -562,25 +847,21 @@ class MyWindow(QMainWindow, form_class):
         #self.listWidgetDebug.addItem(newPath)
         newPath2 = d2rPath + "\\mods\\" + modName + "\\" + modName + ".mpq\\modinfo.json"
         
-        print(newPath2)
-        
-        print(path_modinfo)
+        #print(newPath2)
+        #print(path_modinfo)
         with open(path_modinfo, encoding="UTF-8-sig") as f_org:
             data1 = json.load(f_org)
-            print(data1)
+            #print(data1)
         data1["name"] = modName
         with open(newPath2, "w", encoding="UTF-8-sig") as f_export:
             json.dump(data1, f_export, indent=4)
-        
+        print("출력할 modinfo json > ", data1)
         
         #이제 설정된 데이터를 돌면서 카피해줍니다
         for skinStr in skinList:
             if skinStr[1] == 1: # 1=사용 인경우에만 카피함
                 orgPath = "./files/" + skinStr[2]
                 if os.path.exists(orgPath):
-                    
-                    
-                    
                     #findPath = orgPath
                     #while len(folderPathList) > 0 : folderPathList.pop()
                     #while len(filePathList) > 0 : filePathList.pop()
@@ -619,6 +900,9 @@ class MyWindow(QMainWindow, form_class):
                 soundPath = newPath + "hd/global/sfx/item/"
                 Path(soundPath).mkdir(parents=True, exist_ok=True)
                 shutil.copy2(orgPath, soundPath + "item_rune_hd.flac")
+                soundPath = newPath + "global/sfx/item/"
+                Path(soundPath).mkdir(parents=True, exist_ok=True)
+                shutil.copy2(orgPath, soundPath + "rune.flac")
                 self.debug('[적용] 룬 드랍 소리 %s' % (orgPath))
             else:
                 self.debug('[실패] 룬 드랍 소리 : 파일이 없습니다')
@@ -629,7 +913,13 @@ class MyWindow(QMainWindow, form_class):
                 #copy_tree(orgPath, newPath)
                 fontPath = newPath + "hd/ui/fonts/"
                 Path(fontPath).mkdir(parents=True, exist_ok=True)
-                shutil.copy2(orgPath, fontPath + "kodia.ttf")
+                
+                if self.checkBox99_1.isChecked():
+                    shutil.copy2(orgPath, fontPath + "kodia.ttf")
+                if self.checkBox99_2.isChecked():
+                    shutil.copy2(orgPath, fontPath + "irisl.ttf")
+                if self.checkBox99_3.isChecked():
+                    shutil.copy2(orgPath, fontPath + "blizzardglobaltcunicode.ttf")
                 self.debug('[적용] 폰트 %s' % (orgPath))
             else:
                 self.debug('[실패] 폰트 : 파일이 없습니다')
@@ -643,127 +933,15 @@ class MyWindow(QMainWindow, form_class):
         self.debug("배틀넷 앱 명령줄 인자에 반드시 아래 내용을 입력하셨는지 확인 후 실행해주세요")
         self.debug(" -mod " + modName +" -txt")
         #self.listWidgetDebug.scrollToBottom()
-        reply = QMessageBox.question(self, 'Message', "적용 완료!\n설정도 저장했습니다!", QMessageBox.Yes , QMessageBox.Yes)
+        reply = QMessageBox.question(self.centralwidget, 'Message', "적용 완료!\n설정도 저장했습니다!", QMessageBox.Yes , QMessageBox.Yes)
         self.config_save()
     
-    def __init__(self):
-        global skinList
-        global d2rPath
-        
-        QtWidgets.QMainWindow.__init__(self)
-        
-        
-        super().__init__()
-        self.setupUi(self)
-        
-        #초기값 읽어오기
-        self.getReg() #레지스트리 읽어옴
-        if self.config_load() == False:
-            self.config_save()
-            
-        #config에 이미 diablo경로가있다면 불러옴
-        #d2rPath    
-        if config.has_option('global','d2rPath'):
-            tempStr = config.get('global','d2rPath')
-            if len(tempStr) > 1:
-                d2rPath = tempStr
-                print('path입력완료')
-            else:
-                print('너무짧음 이상함')
-        else:
-            print('저장되어있는 d2rPath 데이터가없음')
-        self.lineEditD2RPath.setText(d2rPath)
-        tempStr = "D2R Path : %s" % (d2rPath)
-        
-        self.listWidgetDebug.addItem(tempStr)
-        self.lineEditCustomName.setText("seonheeCustom")
-        
-        #sound
-        readPath = "./misc/sample_diablo3_legendary.flac"
-        if os.access(readPath, os.F_OK):
-            self.lineEditSoundPath.setText(readPath)
-             
-        
-        self.pushButtonCreate.clicked.connect(self.btnCreate)
-        self.pushButtonConfigSave.clicked.connect(self.btn_configSave)
-        self.pushButtonPathSelect.clicked.connect(self.btnSelectFolder)
-        self.pushButtonListUp.clicked.connect(self.btn_table_row_up)
-        self.pushButtonListDown.clicked.connect(self.btn_table_row_down)
-        self.pushButtonPathSelect_2.clicked.connect(self.btn_selectRuneSound)
-        self.pushButtonPathSelect_3.clicked.connect(self.btn_selectFont)
-        self.pushButtonLoadzip.clicked.connect(self.btn_selectLoadZip)
-        self.pushButtonReload.clicked.connect(self.btn_reload)
-        
-        
-        #config 처리
-        
-        #config로 읽어온 데이터가 있다면 써준다
-        #if len(config.values['global']['modeName']) > 0:
-        #self.lineEditCustomName.setText()
-        if config.has_option('global','modeName'):
-            self.lineEditCustomName.setText(config.get('global','modeName'))
-        if config.has_option('global','sound-rune'):
-            self.lineEditSoundPath.setText(config.get('global','sound-rune'))
-        if config.has_option('global','font'):
-            self.lineEditFontPath.setText(config.get('global','font'))
-        if config.has_option('checkbox','sound-rune'):
-            if config.get('checkbox','sound-rune') == 'True':
-                Flag = True
-            else:
-                Flag = False
-                self.checkBox98.setChecked(Flag)
-        if config.has_option('checkbox','font'):
-            if config.get('checkbox','font') == 'True':
-                Flag = True
-            else:
-                Flag = False
-                self.checkBox99.setChecked(Flag)
-                
-            
-        
 
-        
-        #줄
-        self.tableWidgetMain.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tableWidgetMain.verticalHeader().setVisible(False) 
-        #self.tableWidgetMain.horizontalHeader().setVisible(False) 
-        self.tableWidgetMain.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.tableWidgetMain.setSelectionMode(QAbstractItemView.SingleSelection)
-        
-        self.tableWidgetMain.setColumnCount(3)
-        #스킨갯수만큼
-        
-        self.tableWidgetMain.setColumnWidth(0,40)
-        self.tableWidgetMain.setColumnWidth(1,280)
-        self.tableWidgetMain.setColumnWidth(2,440)
-        self.tableWidgetMain.setHorizontalHeaderLabels(["Seon","스킨명","설명"])
-        self.tableWidgetMain.cellClicked.connect(self.table_cell_clicked)
-        
-        ###
-        self.tableWidgetMain.setContextMenuPolicy(Qt.ActionsContextMenu)
-
-        table_action_modify1 = QAction("이름 수정하기", self.tableWidgetMain)
-        table_action_modify2 = QAction("설명 수정하기", self.tableWidgetMain)
-        table_action_skinDelete = QAction("이 스킨을 삭제하기", self.tableWidgetMain)
-
-        self.tableWidgetMain.addAction(table_action_modify1)
-        self.tableWidgetMain.addAction(table_action_modify2)
-        self.tableWidgetMain.addAction(table_action_skinDelete)
-        
-
-        table_action_modify1.triggered.connect(self._table_action_modify1)
-        table_action_modify2.triggered.connect(self._table_action_modify2)
-        table_action_skinDelete.triggered.connect(self._table_action_skinDelete)
-        ###
-
-        self.files_load()
-        self.table_data_sorting()  #소팅한다
-        self.table_dataRefresh()   #데이터를 재배치하고
         
     def _table_action_modify1(self):
         row = self.tableWidgetMain.currentRow()
         OrgSkinName = skinList[row][2]
-        text, ok = QInputDialog.getText(self, '입력 창', '변경할 명칭을 입력해주세요:', text=OrgSkinName)
+        text, ok = QInputDialog.getText(self.centralwidget, '입력 창', '변경할 명칭을 입력해주세요:', text=OrgSkinName)
         text = text.strip()
         if ok: #ok가 눌렸다면
             if OrgSkinName != text and len(text) > 1: #글자가있는경우에만
@@ -771,7 +949,7 @@ class MyWindow(QMainWindow, form_class):
                 oldPath = '.\\files\\' + OrgSkinName
                 newPath = '.\\files\\' + text
                 if os.path.exists(newPath):
-                     QMessageBox.question(self, 'Message', "이미 존재하는 스킨 명칭입니다. 변경할 수 없어요!", QMessageBox.Yes , QMessageBox.Yes)
+                     QMessageBox.question(self.centralwidget, 'Message', "이미 존재하는 스킨 명칭입니다. 변경할 수 없어요!", QMessageBox.Yes , QMessageBox.Yes)
                 else:
                     if os.path.exists(oldPath):
                         skinList[row][2] = text
@@ -786,7 +964,7 @@ class MyWindow(QMainWindow, form_class):
     def _table_action_modify2(self):
         row = self.tableWidgetMain.currentRow()
         OrgSkindescrip = skinList[row][3]
-        text, ok = QInputDialog.getText(self, '입력 창', '변경할 설명을 입력해주세요:', text=OrgSkindescrip)
+        text, ok = QInputDialog.getText(self.centralwidget, '입력 창', '변경할 설명을 입력해주세요:', text=OrgSkindescrip)
         text = text.strip()
         if ok: #ok가 눌렸다면
             if OrgSkindescrip != text and len(text) > 1: #글자가있는경우에만
@@ -799,7 +977,7 @@ class MyWindow(QMainWindow, form_class):
                     
                     self.config_save()
                     self.table_dataRefresh()   #데이터를 재배치
-                    #QMessageBox.question(self, 'Message', "이미 존재하는 스킨 명칭입니다. 변경할 수 없어요!", QMessageBox.Yes , QMessageBox.Yes)
+                    #QMessageBox.question(self.centralwidget, 'Message', "이미 존재하는 스킨 명칭입니다. 변경할 수 없어요!", QMessageBox.Yes , QMessageBox.Yes)
 
 
 
@@ -809,7 +987,7 @@ class MyWindow(QMainWindow, form_class):
         row = self.tableWidgetMain.currentRow()
         deleteSkinName= skinList[row][2]
         strs = '[%s] 이 스킨을 정말로 지우시겠습니까?' % (deleteSkinName)
-        reply = QMessageBox.question(self, 'Message', strs, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        reply = QMessageBox.question(self.centralwidget, 'Message', strs, QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes:
             deletePath = '.\\files\\' + deleteSkinName
             if os.path.exists(deletePath):
@@ -818,51 +996,31 @@ class MyWindow(QMainWindow, form_class):
                 self.files_load()
                 self.table_data_sorting()  #소팅한다
                 self.table_dataRefresh()   #데이터를 재배치하고
-                QMessageBox.question(self, 'Message', "[%s] 삭제했습니다" % (deleteSkinName) , QMessageBox.Yes , QMessageBox.Yes)
+                QMessageBox.question(self.centralwidget, 'Message', "[%s] 삭제했습니다" % (deleteSkinName) , QMessageBox.Yes , QMessageBox.Yes)
                 
     def showDialog(self):
-        text, ok = QInputDialog.getText(self, 'Input Dialog', '변경할 스킨명을 작성해주세요:')
+        text, ok = QInputDialog.getText(self.centralwidget, 'Input Dialog', '변경할 스킨명을 작성해주세요:')
         
             
             
             
             
 
-        
-class InputSkinDialog(QDialog, Ui_InputSkin):
-    def __init__(self):
-        QDialog.__init__(self)
-        Ui_InputSkin.__init__(self)
-        self.setupUi(self)
-        self.pushButtonOK.clicked.connect(self.pressok)
-        self.pushButtonCANCEL.clicked.connect(self.reject)
-        self.inputStr = ""
-        #print('subdialog 불러옴')
-        
-    def setInputName(self, str):
-        self.lineEditSkinName.setText(str)
-        
-        
-    def Close(self):
-        self.close()
-    
-    
-    def pressok(self):
-        self.inputStr = self.lineEditSkinName.text()
-        self.close()
-        
-        
-        
+
+
         
 if __name__ == "__main__":
+    #app = QApplication(sys.argv)
+    #myWindow = MyWindow()
+    #myWindow.show()
+    #app.exec_()
+
     app = QApplication(sys.argv)
-    myWindow = MyWindow()
-    myWindow.show()
-    #dialog_inputSkin = InputSkin()
-    
+    MainWindow = QtWidgets.QMainWindow()
+    ui = Ui_MainWindow()
+    ui.setupUi(MainWindow)
+    MainWindow.show()
     app.exec_()
-
-
 
 
 
