@@ -29,6 +29,9 @@ import numpy as np #numpy형식으로 image처리
 #from PyQt5.QtWidgets import *
 #from PyQt5.QtGui import *
 
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+qapp = QApplication(sys.argv)
+qapp.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
 
 #os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
@@ -101,6 +104,8 @@ class Ui_MainWindow(object):
                 print('너무짧음 이상함')
         else:
             print('저장되어있는 d2rPath 데이터가없음')
+            
+        
         self.lineEditD2RPath.setText(d2rPath)
         tempStr = "D2R Path : %s" % (d2rPath)
         
@@ -111,8 +116,10 @@ class Ui_MainWindow(object):
         readPath = "./misc/sample_diablo3_legendary.flac"
         if os.access(readPath, os.F_OK):
             self.lineEditSoundPath.setText(readPath)
-             
-        
+        readPath = "./misc/Maplestory Light.ttf"
+        if os.access(readPath, os.F_OK):
+            self.lineEditFontPath.setText(readPath)
+            
         self.pushButtonCreate.clicked.connect(self.btnCreate)
         self.pushButtonConfigSave.clicked.connect(self.btn_configSave)
         self.pushButtonPathSelect.clicked.connect(self.btnSelectFolder)
@@ -133,14 +140,26 @@ class Ui_MainWindow(object):
             self.lineEditCustomName.setText(config.get('global','modeName'))
         if config.has_option('global','sound-rune'):
             self.lineEditSoundPath.setText(config.get('global','sound-rune'))
+        if config.has_option('global','rune-customsoundnum'):
+            self.lineEditRuneNumber.setText(config.get('global','rune-customsoundnum'))
+        else:
+            self.lineEditRuneNumber.setText('26')
+            
         if config.has_option('global','font'):
             self.lineEditFontPath.setText(config.get('global','font'))
+            
         if config.has_option('checkbox','sound-rune'):
             if config.get('checkbox','sound-rune') == 'True':
                 Flag = True
             else:
                 Flag = False
                 self.checkBox98.setChecked(Flag)
+        if config.has_option('checkbox','rune-custom'):
+            if config.get('checkbox','rune-custom') == 'True':
+                Flag = True
+            else:
+                Flag = False
+                self.checkBox982.setChecked(Flag)
         if config.has_option('checkbox','font'):
             if config.get('checkbox','font') == 'True':
                 Flag = True
@@ -181,7 +200,7 @@ class Ui_MainWindow(object):
         self.tableWidgetMain.setColumnWidth(1,250)
         self.tableWidgetMain.setColumnWidth(2,440)
         self.tableWidgetMain.setColumnWidth(3,40)
-        self.tableWidgetMain.setHorizontalHeaderLabels(["Seon","스킨명","설명","사진"])
+        self.tableWidgetMain.setHorizontalHeaderLabels(["적용","스킨명","설명","사진"])
         self.tableWidgetMain.cellClicked.connect(self.table_cell_clicked)
         
         ###
@@ -209,6 +228,8 @@ class Ui_MainWindow(object):
         MainWindow.setObjectName("MainWindow")
         MainWindow.setEnabled(True)
         MainWindow.resize(823, 869)
+        font = QtGui.QFont()
+        font.setPointSize(16)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.listWidgetDebug = QtWidgets.QListWidget(self.centralwidget)
@@ -241,25 +262,36 @@ class Ui_MainWindow(object):
         self.tableWidgetMain.setRowCount(0)
         self.pushButtonListUp = QtWidgets.QPushButton(self.centralwidget)
         self.pushButtonListUp.setGeometry(QtCore.QRect(640, 20, 75, 51))
-        font = QtGui.QFont()
-        font.setPointSize(16)
+
         self.pushButtonListUp.setFont(font)
         self.pushButtonListUp.setObjectName("pushButtonListUp")
         self.pushButtonListDown = QtWidgets.QPushButton(self.centralwidget)
         self.pushButtonListDown.setGeometry(QtCore.QRect(730, 20, 75, 51))
-        font = QtGui.QFont()
-        font.setPointSize(16)
+        
         self.pushButtonListDown.setFont(font)
         self.pushButtonListDown.setObjectName("pushButtonListDown")
         self.pushButtonConfigSave = QtWidgets.QPushButton(self.centralwidget)
         self.pushButtonConfigSave.setGeometry(QtCore.QRect(160, 610, 121, 51))
         self.pushButtonConfigSave.setObjectName("pushButtonConfigSave")
-        self.pushButtonPathSelect_2 = QtWidgets.QPushButton(self.centralwidget)
-        self.pushButtonPathSelect_2.setGeometry(QtCore.QRect(770, 610, 31, 21))
-        self.pushButtonPathSelect_2.setObjectName("pushButtonPathSelect_2")
+        
+        #룬소리
         self.lineEditSoundPath = QtWidgets.QLineEdit(self.centralwidget)
-        self.lineEditSoundPath.setGeometry(QtCore.QRect(400, 610, 361, 20))
+        self.lineEditSoundPath.setGeometry(QtCore.QRect(400, 610, 270, 20))
         self.lineEditSoundPath.setObjectName("lineEditSoundPath")
+        self.pushButtonPathSelect_2 = QtWidgets.QPushButton(self.centralwidget)
+        self.pushButtonPathSelect_2.setGeometry(QtCore.QRect(680, 610, 31, 21))
+        self.pushButtonPathSelect_2.setObjectName("pushButtonPathSelect_2")
+        # 룬번호
+        self.checkBox982 = QtWidgets.QCheckBox(self.centralwidget)
+        self.checkBox982.setEnabled(True)
+        self.checkBox982.setGeometry(QtCore.QRect(720, 613, 91, 16))
+        self.checkBox982.setChecked(True)
+        self.checkBox982.setObjectName("checkBox982")
+        self.lineEditRuneNumber = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEditRuneNumber.setGeometry(QtCore.QRect(770, 610, 30, 20))
+        self.lineEditRuneNumber.setObjectName("lineEditRuneNumber")
+        
+
         self.pushButtonPathSelect_3 = QtWidgets.QPushButton(self.centralwidget)
         self.pushButtonPathSelect_3.setGeometry(QtCore.QRect(770, 637, 31, 21))
         self.pushButtonPathSelect_3.setObjectName("pushButtonPathSelect_3")
@@ -302,11 +334,12 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "SeonHee D2R 스킨 적용 보조도우미 v0.7"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "SeonHee D2R 스킨 적용 보조도우미 v0.93(2026-02-13)"))
         self.pushButtonPathSelect.setText(_translate("MainWindow", "..."))
         self.pushButtonCreate.setText(_translate("MainWindow", "모드 생성하기"))
         self.label.setText(_translate("MainWindow", "mod 명칭"))
         self.checkBox98.setText(_translate("MainWindow", "룬 드랍 소리"))
+        self.checkBox982.setText(_translate("MainWindow", "룬번호"))
         self.pushButtonListUp.setText(_translate("MainWindow", "▲"))
         self.pushButtonListDown.setText(_translate("MainWindow", "▼"))
         self.pushButtonConfigSave.setText(_translate("MainWindow", "설정 저장하기"))
@@ -490,9 +523,12 @@ class Ui_MainWindow(object):
             config['global']['modeName'] = self.lineEditCustomName.text()
             config['global']['sound-rune'] = self.lineEditSoundPath.text()
             config['global']['font'] = self.lineEditFontPath.text()
+            config['global']['rune-customSoundNum'] = self.lineEditRuneNumber.text()
             
             config['checkbox'] = {}
             config['checkbox']['sound-rune'] = str(self.checkBox98.isChecked())
+            config['checkbox']['rune-custom'] = str(self.checkBox982.isChecked())
+            
             config['checkbox']['font'] = str(self.checkBox99.isChecked())
             config['checkbox']['kodia'] = str(self.checkBox99_1.isChecked())
             config['checkbox']['irisl'] = str(self.checkBox99_2.isChecked())
@@ -817,7 +853,15 @@ class Ui_MainWindow(object):
                 reply = QMessageBox.question(self.centralwidget, 'Message', "설치를 취소했습니다", QMessageBox.Yes , QMessageBox.Yes)
                 return
             
-        
+        if self.checkBox99.isChecked():
+            orgPath = self.lineEditFontPath.text()
+            print(os.path.splitext(orgPath))
+            if os.path.splitext(orgPath)[1] != ".ttf":
+                 QMessageBox.question(self.centralwidget, 'Message', "폰트의 확장자가 ttf가 아닙니다. 폰트파일이 아니면 적용할 수 없습니다!", QMessageBox.Yes , QMessageBox.Yes)
+                 return
+             
+            
+            
         #distutils.dir_util._path_created.clear()
         self.debug("----- 설치 초기화중입니다 -----")
         #print("버튼이 눌렸습니다")
@@ -894,35 +938,72 @@ class Ui_MainWindow(object):
 # =============================================================================
     
         if self.checkBox98.isChecked():
+            defaultSoundPath = "./config/item_rune_hd.flac"
             orgPath = self.lineEditSoundPath.text()
             if os.path.exists(orgPath):
-                #copy_tree(orgPath, newPath)
-                soundPath = newPath + "hd/global/sfx/item/"
-                Path(soundPath).mkdir(parents=True, exist_ok=True)
-                shutil.copy2(orgPath, soundPath + "item_rune_hd.flac")
-                soundPath = newPath + "global/sfx/item/"
-                Path(soundPath).mkdir(parents=True, exist_ok=True)
-                shutil.copy2(orgPath, soundPath + "rune.flac")
-                self.debug('[적용] 룬 드랍 소리 %s' % (orgPath))
+                if not self.checkBox982.isChecked():
+                    soundPath = newPath + "hd/global/sfx/item/"
+                    Path(soundPath).mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(orgPath, soundPath + "item_rune_hd.flac")
+                    soundPath = newPath + "global/sfx/item/"
+                    Path(soundPath).mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(orgPath, soundPath + "rune.flac")
+                    self.debug('[적용] 룬 드랍 소리 %s' % (orgPath))
+                else:
+                    # 신규추가. 룬번호에 따라 적용
+                    #misc.txt, sounds.txt
+                    soundPath = newPath + "global/excel/"
+                    soundPath2 = newPath + "hd/global/sfx/item/base"
+                    Path(soundPath).mkdir(parents=True, exist_ok=True)
+                    Path(soundPath2).mkdir(parents=True, exist_ok=True)
+                    shutil.copy2("./config/sounds.txt", soundPath + "sounds.txt")
+                    shutil.copy2("./config/misc.txt", soundPath + "misc.txt")
+                    shutil.copy2("./config/base/sounds.txt", soundPath2 + "sounds.txt")
+                    shutil.copy2("./config/base/misc.txt", soundPath2 + "misc.txt")
+                    # sound
+                    for ni in range(1, 34):
+                        soundPath = newPath + "hd/global/sfx/item/"
+                        Path(soundPath).mkdir(parents=True, exist_ok=True)
+                        if ni >= int(self.lineEditRuneNumber.text()):
+                            shutil.copy2(orgPath, soundPath + "item_rune" + str(ni) +"_hd.flac")
+                        else:
+                            shutil.copy2(defaultSoundPath, soundPath + "item_rune" + str(ni) +"_hd.flac")
+                    for ni in range(1, 34):
+                        soundPath = newPath + "global/sfx/item/"
+                        Path(soundPath).mkdir(parents=True, exist_ok=True)
+                        if ni >= int(self.lineEditRuneNumber.text()):
+                            shutil.copy2(orgPath, soundPath + "rune" + str(ni) +".flac")
+                        else:
+                            shutil.copy2(defaultSoundPath, soundPath + "rune" + str(ni) +".flac")
+                    
             else:
                 self.debug('[실패] 룬 드랍 소리 : 파일이 없습니다')
                 
         if self.checkBox99.isChecked():
             orgPath = self.lineEditFontPath.text()
-            if os.path.exists(orgPath):
-                #copy_tree(orgPath, newPath)
-                fontPath = newPath + "hd/ui/fonts/"
-                Path(fontPath).mkdir(parents=True, exist_ok=True)
-                
-                if self.checkBox99_1.isChecked():
-                    shutil.copy2(orgPath, fontPath + "kodia.ttf")
-                if self.checkBox99_2.isChecked():
-                    shutil.copy2(orgPath, fontPath + "irisl.ttf")
-                if self.checkBox99_3.isChecked():
-                    shutil.copy2(orgPath, fontPath + "blizzardglobaltcunicode.ttf")
-                self.debug('[적용] 폰트 %s' % (orgPath))
-            else:
-                self.debug('[실패] 폰트 : 파일이 없습니다')
+            
+            #선택한 파일의 확장자가 ttf인지 확인합니다
+            fontPath = newPath + "hd/ui/fonts/"
+            print(fontPath)
+            print(os.path.splitext(orgPath))
+            if os.path.splitext(orgPath)[1] == ".ttf":
+                if os.path.exists(orgPath):
+                    #copy_tree(orgPath, newPath)
+                    Path(fontPath).mkdir(parents=True, exist_ok=True)
+
+                    if self.checkBox99_1.isChecked():
+                        shutil.copy2(orgPath, fontPath + "kodia.ttf")
+                    if self.checkBox99_2.isChecked():
+                        shutil.copy2(orgPath, fontPath + "irisl.ttf")
+                    if self.checkBox99_3.isChecked():
+                        shutil.copy2(orgPath, fontPath + "blizzardglobaltcunicode.ttf")
+                    self.debug('[적용] 폰트 %s' % (orgPath))
+                else:
+                    self.debug('[실패] 폰트 : 파일이 없습니다')
+            #else:
+                #self.debug("폰트의 확장자가 ttf가 아닙니다. 폰트파일이 아니면 적용할 수 없습니다!")
+                #QMessageBox.question(self.centralwidget, 'Message', "폰트의 확장자가 ttf가 아닙니다. 폰트파일이 아니면 적용할 수 없습니다!", QMessageBox.Yes , QMessageBox.Yes)
+                    
 
             
         #모두완료하였으니 readme.txt를 지우도록한다
@@ -933,7 +1014,7 @@ class Ui_MainWindow(object):
         self.debug("배틀넷 앱 명령줄 인자에 반드시 아래 내용을 입력하셨는지 확인 후 실행해주세요")
         self.debug(" -mod " + modName +" -txt")
         #self.listWidgetDebug.scrollToBottom()
-        reply = QMessageBox.question(self.centralwidget, 'Message', "적용 완료!\n설정도 저장했습니다!", QMessageBox.Yes , QMessageBox.Yes)
+        reply = QMessageBox.question(self.centralwidget, 'Message', "적용 완료!\n설정도 저장했습니다!\n배틀넷 앱 명령줄 인자에 반드시 아래 내용을 입력하셨는지 확인 후 실행해주세요\n -mod " + modName +" -txt", QMessageBox.Yes , QMessageBox.Yes)
         self.config_save()
     
 
