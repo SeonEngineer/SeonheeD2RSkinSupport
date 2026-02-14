@@ -334,7 +334,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "SeonHee D2R 스킨 적용 보조도우미 v0.93(2026-02-13)"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "SeonHee D2R 스킨 적용 보조도우미 v0.94(2026-02-14)"))
         self.pushButtonPathSelect.setText(_translate("MainWindow", "..."))
         self.pushButtonCreate.setText(_translate("MainWindow", "모드 생성하기"))
         self.label.setText(_translate("MainWindow", "mod 명칭"))
@@ -953,7 +953,7 @@ class Ui_MainWindow(object):
                     # 신규추가. 룬번호에 따라 적용
                     #misc.txt, sounds.txt
                     soundPath = newPath + "global/excel/"
-                    soundPath2 = newPath + "hd/global/sfx/item/base"
+                    soundPath2 = newPath + "global/excel/base/"
                     Path(soundPath).mkdir(parents=True, exist_ok=True)
                     Path(soundPath2).mkdir(parents=True, exist_ok=True)
                     shutil.copy2("./config/sounds.txt", soundPath + "sounds.txt")
